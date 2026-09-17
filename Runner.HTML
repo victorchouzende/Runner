@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcade Runner Nexus - Multiusuário</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background-color: #0b0c10;
+            color: #fff;
+            overflow: hidden; /* Previne scroll acidental durante o jogo */
+            user-select: none;
+        }
+
+        .neon-text {
+            text-shadow: 0 0 10px #45f3ff, 0 0 20px #45f3ff, 0 0 40px #45f3ff;
+            letter-spacing: 5px;
+        }
+
+        .highlight {
+            color: #ff0055;
+            text-shadow: 0 0 10px #ff0055, 0 0 20px #ff0055;
+        }
+
+        /* Input Customizado para Tela de Login */
+        ::placeholder {
+            color: rgba(69, 243, 255, 0.4);
+            font-weight: normal;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.6s ease-in-out, visibility 0.6s;
+            z-index: 10;
+            background: radial-gradient(circle at center, #1f2833 0%, #0b0c10 100%);
+        }
+
+        .screen.active {
+            opacity: 1;
+            visibility: visible;
+            z-index: 20;
+        }
+
+        .btn-modern {
+            background-color: #45f3ff;
+            color: #0b0c10;
+            box-shadow: 0 0 15px #45f3ff;
+            transition: all 0.3s ease;
+        }
+
+        .btn-modern:hover {
+            background-color: #fff;
+            box-shadow: 0 0 30px #45f3ff, 0 0 50px #45f3ff;
+            transform: scale(1.05);
+        }
+
+        .level-card, .char-card {
+            background: rgba(31, 40, 51, 0.8);
+            border: 2px solid #45f3ff;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(69, 243, 255, 0.2);
+        }
+
+        .level-card:hover:not(.locked), .char-card:hover:not(.locked) {
+            transform: translateY(-10px);
+            box-shadow: 0 0 20px #45f3ff;
+            background: rgba(69, 243, 255, 0.1);
+        }
+        
+        .char-card.selected {
+            border-color: #ff0055;
+            box-shadow: 0 0 20px #ff0055;
+            background: rgba(255, 0, 85, 0.2);
+        }
+
+        .locked {
+            border-color: #666;
+            box-shadow: none;
+            filter: grayscale(100%);
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #gameCanvas {
+            background-color: #111;
+            border: 2px solid #45f3ff;
+            box-shadow: 0 0 20px #45f3ff;
+            border-radius: 8px;
+            display: block;
+            max-width: 100%;
+            max-height: 80vh;
+        }
+        
+        .hud {
+             position: absolute;
+             top: 20px;
+             left: 20px;
+             font-size: 1.2rem;
+             color: #45f3ff;
+             text-shadow: 0 0 5px #45f3ff;
+             z-index: 30;
+             display: flex;
+             flex-direction: column;
+             gap: 0.5rem;
+             pointer-events: none;
+        }
+
+        .power-timer {
+            color: #ff0055;
+            text-shadow: 0 0 10px #ff0055;
+            font-weight: bold;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 1; text-shadow: 0 0 10px #ff0055; }
+            to { opacity: 0.5; text-shadow: 0 0 20px #ff0055, 0 0 30px #ff0055; }
+        }
+        
+        #notification {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(69, 243, 255, 0.2);
+            border: 2px solid #45f3ff;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: #fff;
+            text-shadow: 0 0 5px #45f3ff;
+            transform: translateX(150%);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 50;
+        }
+        #notification.show {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper" class="relative w-screen h-screen">
+        
+        <div id="notification">
+            <h4 class="font-bold text-xl mb-1">CONQUISTA!</h4>
+            <p id="notif-text" class="text-sm">Novo Item Desbloqueado</p>
+        </div>
+
+        <!-- NOVO: HUD do Usuário (Sessão Atual) -->
+        <div id="user-hud" class="absolute top-6 right-6 z-50 hidden flex gap-4 items-center bg-[rgba(31,40,51,0.8)] px-4 py-2 rounded-full border border-[#45f3ff] shadow-[0_0_10px_rgba(69,243,255,0.3)] transition-all">
+            <span class="text-xs text-gray-400 tracking-widest hidden sm:inline">USER_ID: </span>
+            <span id="current-username" class="text-[#45f3ff] font-bold text-sm md:text-base tracking-wider uppercase drop-shadow-[0_0_5px_#45f3ff]"></span>
+            <button id="btn-logout" class="bg-transparent border border-[#ff0055] text-[#ff0055] hover:bg-[#ff0055] hover:text-white transition-all px-3 py-1 rounded text-xs uppercase font-bold shadow-[0_0_5px_rgba(255,0,85,0.5)]">Logout</button>
+        </div>
+
+        <div id="login-screen" class="screen active">
+            <div class="text-center w-full max-w-md px-4">
+                <h1 class="neon-text text-5xl md:text-6xl font-black mb-10">SYSTEM <br><span class="highlight">LOGIN</span></h1>
+                
+                <div class="flex flex-col gap-6 bg-[rgba(31,40,51,0.6)] p-8 rounded-xl border-2 border-[#45f3ff] shadow-[0_0_20px_rgba(69,243,255,0.15)] backdrop-blur-sm">
+                    <div class="text-left">
+                        <label class="block text-xs text-[#45f3ff] mb-2 uppercase tracking-widest font-bold">Identificação do Corredor</label>
+                        <input type="text" id="username-input" class="w-full bg-transparent border-b-2 border-[#45f3ff] text-white font-bold text-2xl py-2 focus:outline-none focus:border-[#ff0055] focus:shadow-[0_4px_10px_-4px_#ff0055] transition-all" placeholder="Digite seu Nickname..." autocomplete="off" maxlength="15">
+                    </div>
+                    <button id="btn-login" class="btn-modern px-8 py-4 rounded font-bold text-lg uppercase tracking-wider mt-4">Conectar à Matrix</button>
+                </div>
+                
+                <p class="text-xs text-gray-500 mt-6 tracking-wider">* Novos nicks criam perfis zerados automaticamente</p>
+            </div>
+        </div>
+
+        <div id="start-menu" class="screen hidden">
+            <div class="text-center">
+                <h1 class="neon-text text-5xl md:text-7xl font-black mb-4">NEXUS <br><span class="highlight">RUNNER</span></h1>
+                <p class="text-gray-400 tracking-widest mb-12 text-lg md:text-xl">Sobreviva à Metrópole</p>
+                <button id="btn-start" class="btn-modern px-8 py-4 rounded font-bold text-xl md:text-2xl uppercase tracking-wider mb-4">Iniciar Jogo</button>
+                <p class="text-sm text-gray-500 mt-4 tracking-widest">Seu Recorde: <span id="main-highscore" class="text-white font-bold">0</span></p>
+            </div>
+        </div>
+
+        <div id="character-select" class="screen hidden">
+            <h2 class="neon-text text-3xl md:text-5xl font-bold mb-8 text-center">ESCOLHA SEU AVATAR</h2>
+            <div class="flex flex-wrap justify-center gap-6 px-4 max-w-6xl mb-8">
+                
+                <div class="char-card rounded-xl p-6 w-48 text-center cursor-pointer flex flex-col items-center selected" data-char="square">
+                    <div class="w-16 h-16 bg-[#45f3ff] shadow-[0_0_15px_#45f3ff] mb-4"></div>
+                    <h3 class="font-bold text-white mb-2">Neon Box</h3>
+                    <p class="text-xs text-gray-400">Padrão</p>
+                </div>
+
+                <div class="char-card rounded-xl p-6 w-48 text-center cursor-pointer flex flex-col items-center locked" data-char="triangle" data-req="Fase 1 (1000pts)">
+                    <div class="w-0 h-0 border-l-[30px] border-r-[30px] border-b-[50px] border-l-transparent border-r-transparent border-b-[#a855f7] drop-shadow-[0_0_15px_#a855f7] mb-4"></div>
+                    <h3 class="font-bold text-white mb-2">Triângulo</h3>
+                    <p class="text-xs text-gray-400 req-text">Desbloqueio: Lvl 1</p>
+                </div>
+
+                <div class="char-card rounded-xl p-6 w-48 text-center cursor-pointer flex flex-col items-center locked" data-char="hexagon" data-req="Fase 2 (2000pts)">
+                    <div class="w-16 h-16 bg-[#22c55e] shadow-[0_0_15px_#22c55e] mb-4 rounded-full" style="clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);"></div>
+                    <h3 class="font-bold text-white mb-2">Hexágono</h3>
+                    <p class="text-xs text-gray-400 req-text">Desbloqueio: Lvl 2</p>
+                </div>
+
+                <div class="char-card rounded-xl p-6 w-48 text-center cursor-pointer flex flex-col items-center locked" data-char="glitch" data-req="Fase 3 (3000pts)">
+                    <div class="relative w-16 h-16 mb-4">
+                        <div class="absolute inset-0 bg-red-500 opacity-70 translate-x-1"></div>
+                        <div class="absolute inset-0 bg-blue-500 opacity-70 -translate-x-1"></div>
+                        <div class="absolute inset-0 bg-white"></div>
+                    </div>
+                    <h3 class="font-bold text-white mb-2">Glitch Cube</h3>
+                    <p class="text-xs text-gray-400 req-text">Desbloqueio: Lvl 3</p>
+                </div>
+
+            </div>
+            <div class="flex gap-4">
+                <button id="btn-back-to-start" class="border border-[#45f3ff] text-[#45f3ff] hover:bg-[#45f3ff] hover:text-black transition-all px-6 py-3 rounded font-bold uppercase">Voltar</button>
+                <button id="btn-to-levels" class="btn-modern px-6 py-3 rounded font-bold uppercase">Avançar</button>
+            </div>
+        </div>
+
+        <div id="level-select" class="screen hidden">
+            <h2 class="neon-text text-3xl md:text-5xl font-bold mb-12 text-center">SELECIONE UMA FASE</h2>
+            <div class="flex flex-wrap justify-center gap-8 px-4 max-w-6xl mb-12">
+                
+                <!-- Fase 1 -->
+                <div class="level-card rounded-xl p-8 w-72 text-center cursor-pointer flex flex-col items-center" data-level="1">
+                    <h3 class="text-2xl font-bold mb-4 text-white">FASE 1</h3>
+                    <span class="inline-block px-4 py-1 rounded-full text-sm font-bold mb-6 bg-green-400 text-black shadow-[0_0_10px_#4ade80] uppercase">Fácil</span>
+                    <p class="text-gray-300 text-sm leading-relaxed">Velocidade reduzida, menos obstáculos. Meta: 1000 pts</p>
+                </div>
+
+                <!-- Fase 2 -->
+                <div class="level-card rounded-xl p-8 w-72 text-center cursor-pointer flex flex-col items-center locked" data-level="2">
+                    <h3 class="text-2xl font-bold mb-4 text-white">FASE 2</h3>
+                    <span class="inline-block px-4 py-1 rounded-full text-sm font-bold mb-6 bg-yellow-400 text-black shadow-[0_0_10px_#facc15] uppercase">Média</span>
+                    <p class="text-gray-300 text-sm leading-relaxed">Desafio equilibrado. Meta: 2000 pts</p>
+                    <p class="text-red-400 text-xs mt-4 font-bold unlock-req">Requer Fase 1 Complete</p>
+                </div>
+
+                <!-- Fase 3 -->
+                <div class="level-card rounded-xl p-8 w-72 text-center cursor-pointer flex flex-col items-center locked" data-level="3">
+                    <h3 class="text-2xl font-bold mb-4 text-white">FASE 3</h3>
+                    <span class="inline-block px-4 py-1 rounded-full text-sm font-bold mb-6 bg-red-500 text-white shadow-[0_0_10px_#ef4444] uppercase">Difícil</span>
+                    <p class="text-gray-300 text-sm leading-relaxed">Caos total. Sobreviva se puder!</p>
+                    <p class="text-red-400 text-xs mt-4 font-bold unlock-req">Requer Fase 2 Complete</p>
+                </div>
+
+            </div>
+            <button id="btn-back-to-chars" class="border border-[#45f3ff] text-[#45f3ff] hover:bg-[#45f3ff] hover:text-black transition-all px-6 py-3 rounded font-bold uppercase">Voltar</button>
+        </div>
+
+        <div id="game-container" class="screen hidden bg-black relative flex justify-center items-center">
+            <div id="hud" class="hud hidden">
+                <div>❤️ Vidas: <span id="livesDisplay">3</span></div>
+                <div>⭐ Pontos: <span id="scoreDisplay">0</span></div>
+                <div>🌍 Fase: <span id="levelDisplay">1</span></div>
+                <div id="invincibility-hud" class="power-timer hidden">⚡ PODER: <span id="powerDisplay">0.0</span>s</div>
+            </div>
+            
+            <div id="touch-controls" class="absolute bottom-4 left-0 w-full flex justify-center px-8 hidden z-30 md:hidden">
+                <button id="btn-jump" class="btn-modern px-10 py-5 rounded-full font-bold opacity-70 w-full max-w-sm text-2xl">PULAR</button>
+            </div>
+
+            <canvas id="gameCanvas" width="800" height="400"></canvas>
+            
+            <!-- Tela de Game Over overlay -->
+            <div id="game-over-screen" class="absolute inset-0 bg-black/80 hidden flex-col justify-center items-center z-40">
+                <h2 class="neon-text text-5xl mb-4 text-red-500">GAME OVER</h2>
+                <p class="text-2xl mb-2">Pontuação Final: <span id="finalScore" class="text-[#45f3ff] font-bold">0</span></p>
+                <p class="text-lg text-gray-400 mb-8">Recorde do Usuário: <span id="bestScore" class="text-yellow-400">0</span></p>
+                <div class="flex flex-col gap-4 w-full max-w-xs">
+                    <button id="btn-restart-level" class="btn-modern px-8 py-4 rounded font-bold uppercase text-xl text-center">Tentar Novamente</button>
+                    <button id="btn-restart" class="border border-[#45f3ff] text-[#45f3ff] hover:bg-[#45f3ff] hover:text-black transition-all px-8 py-4 rounded font-bold uppercase text-xl text-center">Voltar ao Menu</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // O SaveSystem foi reescrito para gerenciar múltiplos usuários, 
+        // mas mantem a variável 'data' funcionando exatamente como antes 
+        // para não quebrar o GameEngine original.
+        const SaveSystem = {
+            currentUser: null,
+            usersDatabase: {}, 
+
+            // Template limpo para novos cadastros
+            defaultData: {
+                unlockedLevels: 1, 
+                unlockedChars: ['square'],
+                selectedChar: 'square',
+                highScore: 0
+            },
+            
+            // Ponteiro dinâmico (O GameEngine continua lendo e escrevendo aqui)
+            data: {},
+            
+            load() {
+                const saved = localStorage.getItem('nexusRunner_MultiUser');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        this.usersDatabase = parsed.usersDatabase || {};
+                        this.currentUser = parsed.currentUser || null;
+                    } catch (e) {
+                        console.error("Erro ao ler save", e);
+                    }
+                }
+
+                if (this.currentUser && this.usersDatabase[this.currentUser]) {
+                    this.data = this.usersDatabase[this.currentUser];
+                } else {
+                    this.data = { ...this.defaultData };
+                }
+            },
+            
+            save() {
+                if (!this.currentUser) return; // Não salva se não estiver logado
+
+                // Sincroniza o ponteiro 'data' para dentro do banco de dados do usuário
+                this.usersDatabase[this.currentUser] = { ...this.data };
+
+                const payload = {
+                    currentUser: this.currentUser,
+                    usersDatabase: this.usersDatabase
+                };
+
+                localStorage.setItem('nexusRunner_MultiUser', JSON.stringify(payload));
+            },
+
+            // --- NOVOS MÉTODOS DE LOGIN/SESSÃO ---
+            loginUser(username) {
+                const safeName = username.trim().toUpperCase();
+                if (safeName.length === 0) return false;
+
+                this.currentUser = safeName;
+
+                // Se o usuário não existir, cadastra usando o template default
+                if (!this.usersDatabase[this.currentUser]) {
+                    this.usersDatabase[this.currentUser] = { ...this.defaultData };
+                }
+
+                // Aponta os dados ativos para o perfil carregado
+                this.data = this.usersDatabase[this.currentUser];
+                this.save();
+                return true;
+            },
+
+            logoutUser() {
+                this.currentUser = null;
+                this.data = { ...this.defaultData };
+                this.save();
+            },
+
+            // --- MÉTODOS ORIGINAIS INTACTOS (Trabalham com this.data normalmente) ---
+            unlockChar(charId, charName) {
+                if (!this.data.unlockedChars.includes(charId)) {
+                    this.data.unlockedChars.push(charId);
+                    this.save();
+                    UIController.showNotification(`Personagem: ${charName}`);
+                }
+            },
+
+            unlockLevel(level) {
+                if (this.data.unlockedLevels < level) {
+                    this.data.unlockedLevels = level;
+                    this.save();
+                    UIController.showNotification(`Fase ${level} Desbloqueada!`);
+                }
+            },
+
+            updateScore(score) {
+                if (score > this.data.highScore) {
+                    this.data.highScore = score;
+                    this.save();
+                }
+            }
+        };
+
+        const UIController = {
+            screens: {
+                login: document.getElementById('login-screen'), // NOVA TELA
+                start: document.getElementById('start-menu'),
+                charSelect: document.getElementById('character-select'),
+                levelSelect: document.getElementById('level-select'),
+                game: document.getElementById('game-container')
+            },
+            buttons: {
+                login: document.getElementById('btn-login'), // NOVO BOTÃO
+                logout: document.getElementById('btn-logout'), // NOVO BOTÃO
+                start: document.getElementById('btn-start'),
+                toLevels: document.getElementById('btn-to-levels'),
+                backToStart: document.getElementById('btn-back-to-start'),
+                backToChars: document.getElementById('btn-back-to-chars'),
+                levels: document.querySelectorAll('.level-card'),
+                chars: document.querySelectorAll('.char-card'),
+                restart: document.getElementById('btn-restart'),
+                restartLevel: document.getElementById('btn-restart-level')
+            },
+            elements: {
+                usernameInput: document.getElementById('username-input'), // NOVO INPUT
+                userHud: document.getElementById('user-hud'), // NOVO HUD
+                currentUsername: document.getElementById('current-username'), // NOVO DISPLAY
+                hud: document.getElementById('hud'),
+                gameOver: document.getElementById('game-over-screen'),
+                levelDisplay: document.getElementById('levelDisplay'),
+                touchControls: document.getElementById('touch-controls'),
+                mainHighscore: document.getElementById('main-highscore'),
+                notif: document.getElementById('notification'),
+                notifText: document.getElementById('notif-text')
+            },
+
+            init() {
+                SaveSystem.load();
+                
+                // --- LÓGICA DE ROTEAMENTO INICIAL ---
+                // Verifica se há uma sessão ativa salva
+                if (SaveSystem.currentUser) {
+                    // Pula o login
+                    this.screens.login.classList.remove('active');
+                    this.screens.login.classList.add('hidden');
+                    this.screens.start.classList.remove('hidden');
+                    this.screens.start.classList.add('active');
+                    
+                    this.elements.userHud.classList.remove('hidden');
+                    this.elements.currentUsername.textContent = SaveSystem.currentUser;
+                } else {
+                    // Exige login
+                    this.screens.start.classList.remove('active');
+                    this.screens.start.classList.add('hidden');
+                    this.screens.login.classList.remove('hidden');
+                    this.screens.login.classList.add('active');
+                    this.elements.userHud.classList.add('hidden');
+                }
+
+                this.updateUIWithSaveData();
+                this.bindEvents();
+            },
+
+            updateUIWithSaveData() {
+                // Highscore
+                this.elements.mainHighscore.textContent = SaveSystem.data.highScore;
+
+                // Levels
+                this.buttons.levels.forEach(card => {
+                    const level = parseInt(card.getAttribute('data-level'));
+                    if (level <= SaveSystem.data.unlockedLevels) {
+                        card.classList.remove('locked');
+                        const reqText = card.querySelector('.unlock-req');
+                        if(reqText) reqText.style.display = 'none';
+                    } else {
+                        // Reseta o estado visual para quando trocar de usuário
+                        card.classList.add('locked');
+                        const reqText = card.querySelector('.unlock-req');
+                        if(reqText) reqText.style.display = 'block';
+                    }
+                });
+
+                // Characters
+                this.buttons.chars.forEach(card => {
+                    const charId = card.getAttribute('data-char');
+                    // Lock/Unlock
+                    if (SaveSystem.data.unlockedChars.includes(charId)) {
+                        card.classList.remove('locked');
+                        const reqText = card.querySelector('.req-text');
+                        if(reqText) reqText.textContent = "Desbloqueado";
+                    } else {
+                        // Bloqueia caso seja um usuário novo
+                        card.classList.add('locked');
+                        const reqText = card.querySelector('.req-text');
+                        if(reqText) reqText.textContent = card.getAttribute('data-req') ? `Desbloqueio: Lvl ${charId === 'triangle' ? 1 : charId === 'hexagon' ? 2 : 3}` : '';
+                    }
+
+                    // Selection
+                    if (charId === SaveSystem.data.selectedChar) {
+                        this.selectCharacter(card);
+                    }
+                });
+            },
+
+            bindEvents() {
+                // Eventos de Sistema Multiusuário
+                this.buttons.login.addEventListener('click', () => this.handleLogin());
+                this.elements.usernameInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.handleLogin();
+                });
+
+                this.buttons.logout.addEventListener('click', () => {
+                    SaveSystem.logoutUser();
+                    this.elements.userHud.classList.add('hidden');
+                    this.elements.usernameInput.value = '';
+                    
+                    // Esconde todas as telas e força a ida pro login
+                    Object.values(this.screens).forEach(s => {
+                        s.classList.remove('active');
+                        s.classList.add('hidden');
+                    });
+                    this.screens.login.classList.remove('hidden');
+                    
+                    // Reflow hack para transição
+                    void this.screens.login.offsetWidth; 
+                    this.screens.login.classList.add('active');
+                });
+
+
+                // Fluxo de telas clássico (Intacto)
+                this.buttons.start.addEventListener('click', () => {
+                    this.updateUIWithSaveData();
+                    this.switchScreen('start', 'charSelect');
+                });
+
+                this.buttons.backToStart.addEventListener('click', () => this.switchScreen('charSelect', 'start'));
+                this.buttons.toLevels.addEventListener('click', () => this.switchScreen('charSelect', 'levelSelect'));
+                this.buttons.backToChars.addEventListener('click', () => this.switchScreen('levelSelect', 'charSelect'));
+
+                // Seleção de Personagem
+                this.buttons.chars.forEach(card => {
+                    card.addEventListener('click', (e) => {
+                        if (!card.classList.contains('locked')) {
+                            this.selectCharacter(card);
+                            SaveSystem.data.selectedChar = card.getAttribute('data-char');
+                            SaveSystem.save();
+                        }
+                    });
+                });
+
+                // Seleção de Fase
+                this.buttons.levels.forEach(card => {
+                    card.addEventListener('click', (e) => {
+                        if (!card.classList.contains('locked')) {
+                            const level = parseInt(e.currentTarget.getAttribute('data-level'));
+                            this.startGame(level);
+                        }
+                    });
+                });
+
+                // Botão de Voltar ao Menu Pós Game Over
+                this.buttons.restart.addEventListener('click', () => {
+                    this.elements.gameOver.classList.add('hidden');
+                    this.elements.hud.classList.add('hidden');
+                    this.elements.touchControls.classList.add('hidden');
+                    this.elements.userHud.classList.remove('hidden'); // Volta o HUD de usuário
+                    this.updateUIWithSaveData(); // Refresh locks
+                    this.switchScreen('game', 'start');
+                });
+
+                // Botão de Reiniciar a Fase 
+                this.buttons.restartLevel.addEventListener('click', () => {
+                    this.elements.gameOver.classList.add('hidden');
+                    this.elements.hud.classList.remove('hidden');
+                    if(window.innerWidth < 768 || ('ontouchstart' in window)) {
+                        this.elements.touchControls.classList.remove('hidden');
+                    }
+                    GameEngine.start(); // Reinicia o nível atual
+                });
+            },
+
+            // Método Auxiliar de Login
+            handleLogin() {
+                const username = this.elements.usernameInput.value;
+                if (SaveSystem.loginUser(username)) {
+                    this.elements.currentUsername.textContent = SaveSystem.currentUser;
+                    this.elements.userHud.classList.remove('hidden');
+                    this.updateUIWithSaveData();
+                    this.switchScreen('login', 'start');
+                } else {
+                    this.showNotification("Identificação Inválida!");
+                }
+            },
+
+            selectCharacter(selectedCard) {
+                this.buttons.chars.forEach(c => c.classList.remove('selected'));
+                selectedCard.classList.add('selected');
+            },
+
+            switchScreen(hideId, showId) {
+                this.screens[hideId].classList.remove('active');
+                setTimeout(() => {
+                    this.screens[hideId].classList.add('hidden');
+                    this.screens[showId].classList.remove('hidden');
+                    void this.screens[showId].offsetWidth; 
+                    this.screens[showId].classList.add('active');
+                }, 600);
+            },
+
+            showNotification(text) {
+                this.elements.notifText.textContent = text;
+                this.elements.notif.classList.add('show');
+                setTimeout(() => {
+                    this.elements.notif.classList.remove('show');
+                }, 3000);
+            },
+
+            startGame(level) {
+                this.switchScreen('levelSelect', 'game');
+                this.elements.levelDisplay.textContent = level;
+                
+                // Esconde a info de usuário durante a gameplay para não atrapalhar
+                this.elements.userHud.classList.add('hidden');
+                
+                GameEngine.configureDifficulty(level);
+                GameEngine.setPlayerCharacter(SaveSystem.data.selectedChar);
+                
+                setTimeout(() => {
+                    this.elements.hud.classList.remove('hidden');
+                    if(window.innerWidth < 768 || ('ontouchstart' in window)) {
+                        this.elements.touchControls.classList.remove('hidden');
+                    }
+                    GameEngine.start(level);
+                }, 600);
+            },
+            
+            showGameOver(score) {
+                SaveSystem.updateScore(score);
+                document.getElementById('finalScore').textContent = score;
+                document.getElementById('bestScore').textContent = SaveSystem.data.highScore;
+                this.elements.gameOver.classList.remove('hidden');
+                this.elements.touchControls.classList.add('hidden');
+            }
+        };
+
+        // A lógica do jogo continua lendo/escrevendo no SaveSystem.data perfeitamente
+        // graças à arquitetura de proxy implementada acima. Nenhuma mecânica foi tocada.
+        const GameEngine = {
+            canvas: document.getElementById('gameCanvas'),
+            ctx: null,
+            animationId: null,
+            isRunning: false,
+            currentLevel: 1,
+            
+            // UI bindings
+            scoreElement: document.getElementById('scoreDisplay'),
+            livesElement: document.getElementById('livesDisplay'),
+            powerHud: document.getElementById('invincibility-hud'),
+            powerDisplay: document.getElementById('powerDisplay'),
+            
+            score: 0,
+            lives: 3,
+            
+            // Sistemas de Estado
+            state: {
+                isInvincible: false, // Poder da Estrela
+                invincibleTimer: 0,
+                isRecovering: false, // Dano tomado (piscar)
+                recoveryTimer: 0
+            },
+
+            // Player properties base
+            player: {
+                x: 50,
+                y: 0, 
+                width: 30,
+                height: 30,
+                color: '#45f3ff',
+                type: 'square',
+                velocityY: 0,
+                gravity: 0.6,
+                jumpPower: -12,
+                isGrounded: false
+            },
+            
+            // Arrays de Entidades
+            obstacles: [],
+            coins: [],
+            stars: [],
+            particles: [],
+            bgStars: [], // Parallax
+            shootingStars: [], // Novo array para as estrelas cadentes
+            
+            config: {
+                gameSpeed: 5,        
+                spawnRateObs: 100,   
+                spawnRateCoin: 60,   
+                spawnRateStar: 1000, // Demora bastante para spawnar poder
+                frameCount: 0
+            },
+
+            // --- CONFIGURAÇÕES E INICIALIZAÇÃO ---
+            setPlayerCharacter(type) {
+                this.player.type = type;
+                // Ajusta cores baseadas no personagem
+                switch(type) {
+                    case 'square': this.player.color = '#45f3ff'; break;
+                    case 'triangle': this.player.color = '#a855f7'; break; // Roxo
+                    case 'hexagon': this.player.color = '#22c55e'; break; // Verde
+                    case 'glitch': this.player.color = '#ffffff'; break; // Branco/Glitch
+                    case 'orbital': this.player.color = '#f97316'; break; // Laranja
+                }
+            },
+
+            configureDifficulty(level) {
+                this.currentLevel = level;
+                switch(level) {
+                    case 1: 
+                        this.config.gameSpeed = 5;
+                        this.config.spawnRateObs = 120;
+                        this.config.spawnRateCoin = 50;
+                        break;
+                    case 2: 
+                        this.config.gameSpeed = 7.5;
+                        this.config.spawnRateObs = 90;
+                        this.config.spawnRateCoin = 70;
+                        break;
+                    case 3: 
+                        this.config.gameSpeed = 10;
+                        this.config.spawnRateObs = 60; 
+                        this.config.spawnRateCoin = 100;
+                        break;
+                }
+            },
+
+            init() {
+                this.ctx = this.canvas.getContext('2d');
+                this.player.y = this.canvas.height - this.player.height - 20;
+                this.bindInputs();
+                this.initParallax();
+            },
+
+            initParallax() {
+                this.bgStars = [];
+                for(let i=0; i<50; i++) {
+                    this.bgStars.push({
+                        x: Math.random() * this.canvas.width,
+                        y: Math.random() * (this.canvas.height - 20),
+                        size: Math.random() * 2 + 1,
+                        speed: Math.random() * 0.5 + 0.1
+                    });
+                }
+            },
+
+            bindInputs() {
+                window.removeEventListener('keydown', this.handleJump);
+                document.getElementById('btn-jump').removeEventListener('touchstart', this.handleJump);
+                document.getElementById('btn-jump').removeEventListener('mousedown', this.handleJump);
+                
+                // Teclado
+                window.addEventListener('keydown', this.handleJump.bind(this));
+                
+                // Mobile e Mouse no botão
+                const jumpBtn = document.getElementById('btn-jump');
+                jumpBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); 
+                    this.handleJump({code: 'Space'});
+                });
+                jumpBtn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this.handleJump({code: 'Space'});
+                });
+
+                // Clique direto no canvas
+                this.canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.handleJump({code: 'Space'});
+                });
+                this.canvas.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    this.handleJump({code: 'Space'});
+                });
+            },
+
+            handleJump(e) {
+                if ((e.code === 'Space' || e.code === 'ArrowUp') && this.player.isGrounded && this.isRunning) {
+                    this.player.velocityY = this.player.jumpPower;
+                    this.player.isGrounded = false;
+                    this.createParticles(this.player.x + this.player.width/2, this.player.y + this.player.height, this.player.color, 5);
+                }
+            },
+
+            start() {
+                this.score = 0;
+                this.lives = 3;
+                this.obstacles = [];
+                this.coins = [];
+                this.stars = [];
+                this.particles = [];
+                this.shootingStars = []; // Limpa as estrelas cadentes ao reiniciar
+                this.config.frameCount = 0;
+                this.player.y = this.canvas.height - this.player.height - 20;
+                this.player.velocityY = 0;
+                this.state.isInvincible = false;
+                this.state.isRecovering = false;
+                
+                this.updateHUD();
+                this.isRunning = true;
+                this.powerHud.classList.add('hidden');
+                
+                if(this.animationId) cancelAnimationFrame(this.animationId);
+                this.loop();
+            },
+
+            gameOver() {
+                this.isRunning = false;
+                cancelAnimationFrame(this.animationId);
+                UIController.showGameOver(this.score);
+            },
+
+            updateHUD() {
+                this.scoreElement.textContent = this.score;
+                this.livesElement.textContent = this.lives;
+            },
+
+            loop() {
+                if (!this.isRunning) return;
+                this.update();
+                this.draw();
+                this.animationId = requestAnimationFrame(this.loop.bind(this));
+            },
+
+            update() {
+                this.config.frameCount++;
+
+                // Física do Player
+                this.player.velocityY += this.player.gravity;
+                this.player.y += this.player.velocityY;
+
+                // Colisão com o chão
+                const groundY = this.canvas.height - 20;
+                if (this.player.y + this.player.height >= groundY) {
+                    this.player.y = groundY - this.player.height;
+                    this.player.velocityY = 0;
+                    this.player.isGrounded = true;
+                }
+
+                // Gerenciadores de Estado (Timers)
+                if (this.state.isRecovering) {
+                    this.state.recoveryTimer--;
+                    if (this.state.recoveryTimer <= 0) this.state.isRecovering = false;
+                }
+
+                if (this.state.isInvincible) {
+                    this.state.invincibleTimer--;
+                    // Atualiza HUD de poder (convertendo frames para segundos assumindo 60fps)
+                    this.powerDisplay.textContent = (this.state.invincibleTimer / 60).toFixed(1);
+                    if (this.state.invincibleTimer <= 0) {
+                        this.state.isInvincible = false;
+                        this.powerHud.classList.add('hidden');
+                    }
+                }
+
+                // Geradores de Entidades
+                if (this.config.frameCount % this.config.spawnRateObs === 0) {
+                    this.obstacles.push({
+                        x: this.canvas.width,
+                        y: groundY - 40,
+                        width: 20,
+                        height: 40,
+                        color: '#ff0055' // Vermelho Neon
+                    });
+                }
+
+                if (this.config.frameCount % this.config.spawnRateCoin === 0) {
+                    if(this.config.frameCount % this.config.spawnRateObs !== 0) {
+                        this.coins.push({
+                            x: this.canvas.width,
+                            y: groundY - 80 - Math.random() * 60,
+                            radius: 10,
+                            color: '#facc15' // Amarelo
+                        });
+                    }
+                }
+
+                // Spawner de Estrela (Poder) - Randomização leve em torno da taxa base
+                if (this.config.frameCount > 0 && this.config.frameCount % this.config.spawnRateStar === 0) {
+                    this.stars.push({
+                        x: this.canvas.width,
+                        y: groundY - 120 - Math.random() * 50,
+                        radius: 15,
+                        color: '#00ffcc', // Ciano brilhante
+                        angle: 0
+                    });
+                }
+
+                // Move Parallax
+                this.bgStars.forEach(star => {
+                    star.x -= star.speed * (this.config.gameSpeed / 2);
+                    if (star.x < 0) star.x = this.canvas.width;
+                });
+
+                // Move Particles
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.05;
+                    if (p.life <= 0) this.particles.splice(i, 1);
+                }
+
+                // Lógica de Spawns e Movimento das Estrelas Cadentes no fundo
+                // Cerca de 1.5% de chance de nascer uma estrela cadente a cada frame
+                if (Math.random() < 0.015) { 
+                    this.shootingStars.push({
+                        x: Math.random() * (this.canvas.width * 1.5), // Nasce espalhado, podendo vir de fora da tela direita
+                        y: (Math.random() * this.canvas.height) / 2 - 50, // Nasce sempre na metade superior
+                        vx: -(Math.random() * 15 + 10), // Velocidade horizontal rápida (para a esquerda)
+                        vy: Math.random() * 6 + 2,      // Velocidade vertical (caindo levemente)
+                        length: Math.random() * 15 + 10, // Tamanho do rastro
+                        life: 1.0,
+                        decay: Math.random() * 0.03 + 0.01 // Velocidade com que desaparece
+                    });
+                }
+
+                // Atualiza as estrelas cadentes
+                for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+                    let ss = this.shootingStars[i];
+                    ss.x += ss.vx;
+                    ss.y += ss.vy;
+                    ss.life -= ss.decay;
+                    
+                    // Remove da memória se sumiu ou saiu da tela
+                    if (ss.life <= 0 || ss.x < -100 || ss.y > this.canvas.height) {
+                        this.shootingStars.splice(i, 1);
+                    }
+                }
+
+                this.updateObstacles();
+                this.updateCollectibles();
+                this.checkProgression();
+            },
+
+            updateObstacles() {
+                for (let i = this.obstacles.length - 1; i >= 0; i--) {
+                    let obs = this.obstacles[i];
+                    obs.x -= this.config.gameSpeed;
+
+                    // Colisão com Player (AABB)
+                    if (this.player.x < obs.x + obs.width &&
+                        this.player.x + this.player.width > obs.x &&
+                        this.player.y < obs.y + obs.height &&
+                        this.player.y + this.player.height > obs.y) {
+                        
+                        if (this.state.isInvincible) {
+                            // Destrói obstáculo se invencível
+                            this.createParticles(obs.x + obs.width/2, obs.y + obs.height/2, obs.color, 15);
+                            this.obstacles.splice(i, 1);
+                            this.score += 20; // Pontos extras por destruir
+                            this.updateHUD();
+                            continue;
+                        } else if (!this.state.isRecovering) {
+                            // Sofre dano
+                            this.lives--;
+                            this.updateHUD();
+                            this.createParticles(this.player.x + this.player.width/2, this.player.y + this.player.height/2, '#ff0000', 20);
+                            
+                            if (this.lives <= 0) {
+                                this.gameOver();
+                                return;
+                            } else {
+                                this.state.isRecovering = true;
+                                this.state.recoveryTimer = 120; // 2 segundos de invulnerabilidade
+                            }
+                        }
+                    }
+
+                    if (obs.x + obs.width < 0) {
+                        this.obstacles.splice(i, 1);
+                        this.score += 10;
+                        this.updateHUD();
+                    }
+                }
+            },
+
+            updateCollectibles() {
+                // Moedas
+                for (let i = this.coins.length - 1; i >= 0; i--) {
+                    let coin = this.coins[i];
+                    coin.x -= this.config.gameSpeed;
+
+                    let distX = Math.abs(coin.x - this.player.x - this.player.width / 2);
+                    let distY = Math.abs(coin.y - this.player.y - this.player.height / 2);
+
+                    if (distX <= (this.player.width / 2 + coin.radius) && 
+                        distY <= (this.player.height / 2 + coin.radius)) {
+                        
+                        this.createParticles(coin.x, coin.y, coin.color, 5);
+                        this.coins.splice(i, 1);
+                        this.score += 50;
+                        this.updateHUD();
+                        continue;
+                    }
+
+                    if (coin.x + coin.radius < 0) this.coins.splice(i, 1);
+                }
+
+                // Estrelas (Poder de Invencibilidade)
+                for (let i = this.stars.length - 1; i >= 0; i--) {
+                    let star = this.stars[i];
+                    star.x -= this.config.gameSpeed;
+                    star.angle += 0.05; // Rotação
+                    star.y += Math.sin(this.config.frameCount * 0.1) * 2; // Flutuação
+
+                    let distX = Math.abs(star.x - this.player.x - this.player.width / 2);
+                    let distY = Math.abs(star.y - this.player.y - this.player.height / 2);
+
+                    if (distX <= (this.player.width / 2 + star.radius) && 
+                        distY <= (this.player.height / 2 + star.radius)) {
+                        
+                        // Coletou Estrela
+                        this.createParticles(star.x, star.y, star.color, 30);
+                        this.stars.splice(i, 1);
+                        
+                        // Ativa Poder (Aproximadamente 6 segundos a 60fps = 360 frames)
+                        this.state.isInvincible = true;
+                        this.state.invincibleTimer = 360;
+                        this.powerHud.classList.remove('hidden');
+                        continue;
+                    }
+
+                    if (star.x + star.radius < 0) this.stars.splice(i, 1);
+                }
+            },
+
+            checkProgression() {
+                // Verifica Marcos de Pontuação para Desbloqueio
+                if (this.currentLevel === 1 && this.score >= 1000) {
+                    SaveSystem.unlockLevel(2);
+                    SaveSystem.unlockChar('triangle', 'Triângulo Energético');
+                }
+                else if (this.currentLevel === 2 && this.score >= 2000) {
+                    SaveSystem.unlockLevel(3);
+                    SaveSystem.unlockChar('hexagon', 'Hexágono Futurista');
+                }
+                else if (this.currentLevel === 3 && this.score >= 3000) {
+                    SaveSystem.unlockChar('glitch', 'Cubo Glitch');
+                    if(this.score >= 4000) {
+                        SaveSystem.unlockChar('orbital', 'Orbital Runner');
+                    }
+                }
+            },
+
+            createParticles(x, y, color, count) {
+                for(let i=0; i<count; i++) {
+                    this.particles.push({
+                        x: x,
+                        y: y,
+                        vx: (Math.random() - 0.5) * 10,
+                        vy: (Math.random() - 0.5) * 10,
+                        life: 1.0,
+                        color: color
+                    });
+                }
+            },
+
+            drawMoon() {
+                // Posição fixa no céu do cenário (acompanha a câmera automaticamente)
+                const moonX = this.canvas.width - 100;
+                const moonY = 80;
+                const radius = 35;
+                
+                let moonColor = '#ffffff';
+                let glowColor = '#ffffff';
+
+                // Altera as cores da lua baseado no level atual
+                switch(this.currentLevel) {
+                    case 1:
+                        moonColor = '#ffffff'; // Branca brilhante
+                        glowColor = 'rgba(255, 255, 255, 0.8)';
+                        break;
+                    case 2:
+                        moonColor = '#d0f0ff'; // Base levemente azul
+                        glowColor = '#45f3ff'; // Glow Neon Ciano
+                        break;
+                    case 3:
+                        moonColor = '#ffcccc'; // Base avermelhada
+                        glowColor = '#ff0055'; // Glow Neon Rosa/Vermelho
+                        break;
+                }
+
+                this.ctx.save();
+                this.ctx.beginPath();
+                this.ctx.arc(moonX, moonY, radius, 0, Math.PI * 2);
+                this.ctx.fillStyle = moonColor;
+                this.ctx.shadowColor = glowColor;
+                this.ctx.shadowBlur = 50; // Brilho intenso
+                this.ctx.fill();
+                this.ctx.restore();
+            },
+
+            draw() {
+                // Clear Canvas
+                this.ctx.fillStyle = '#111';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Draw Parallax Stars
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                this.bgStars.forEach(star => {
+                    this.ctx.fillRect(star.x, star.y, star.size, star.size);
+                });
+
+                // Desenha Estrelas Cadentes (Antes da lua para criar profundidade de campo)
+                this.ctx.save();
+                this.shootingStars.forEach(ss => {
+                    this.ctx.globalAlpha = Math.max(0, ss.life);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(ss.x, ss.y);
+                    // Desenha a "cauda" esticando na direção oposta ao movimento
+                    this.ctx.lineTo(ss.x - ss.vx * ss.length * 0.1, ss.y - ss.vy * ss.length * 0.1);
+                    
+                    this.ctx.strokeStyle = '#ffffff'; // Núcleo branco
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.shadowColor = this.currentLevel === 3 ? '#ff0055' : '#45f3ff'; // Glow segue o tema da fase
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.stroke();
+                });
+                this.ctx.restore();
+
+                // Desenha a lua customizada antes do chão e dos obstáculos
+                this.drawMoon();
+
+                // Draw Ground
+                this.ctx.fillStyle = '#1f2833';
+                this.ctx.fillRect(0, this.canvas.height - 20, this.canvas.width, 20);
+                
+                // Linha Neon do chão
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, this.canvas.height - 20);
+                this.ctx.lineTo(this.canvas.width, this.canvas.height - 20);
+                this.ctx.strokeStyle = '#45f3ff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+
+                // Draw Particles
+                this.particles.forEach(p => {
+                    this.ctx.globalAlpha = p.life;
+                    this.ctx.fillStyle = p.color;
+                    this.ctx.fillRect(p.x, p.y, 4, 4);
+                });
+                this.ctx.globalAlpha = 1.0;
+
+                // Efeito Piscar se machucado
+                if (this.state.isRecovering && Math.floor(this.config.frameCount / 5) % 2 === 0) {
+                    // Pula o frame de desenho do player para efeito "blink"
+                } else {
+                    this.drawPlayer();
+                }
+
+                // Draw Obstacles
+                this.obstacles.forEach(obs => {
+                    this.ctx.fillStyle = obs.color;
+                    this.ctx.shadowColor = obs.color;
+                    this.ctx.shadowBlur = 15;
+                    this.ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                    this.ctx.shadowBlur = 0;
+                });
+
+                // Draw Coins
+                this.coins.forEach(coin => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(coin.x, coin.y, coin.radius, 0, Math.PI * 2);
+                    this.ctx.fillStyle = coin.color;
+                    this.ctx.shadowColor = coin.color;
+                    this.ctx.shadowBlur = 15;
+                    this.ctx.fill();
+                    this.ctx.closePath();
+                    this.ctx.shadowBlur = 0;
+                });
+
+                // Draw Stars (PowerUp)
+                this.stars.forEach(star => {
+                    this.ctx.save();
+                    this.ctx.translate(star.x, star.y);
+                    this.ctx.rotate(star.angle);
+                    
+                    this.ctx.shadowColor = star.color;
+                    this.ctx.shadowBlur = 20;
+                    this.ctx.fillStyle = '#fff'; // Centro branco
+
+                    // Desenha estrela de 5 pontas
+                    this.ctx.beginPath();
+                    for(let i = 0; i < 5; i++) {
+                        this.ctx.lineTo(Math.cos((18+i*72)/180*Math.PI) * star.radius, 
+                                        -Math.sin((18+i*72)/180*Math.PI) * star.radius);
+                        this.ctx.lineTo(Math.cos((54+i*72)/180*Math.PI) * (star.radius/2), 
+                                        -Math.sin((54+i*72)/180*Math.PI) * (star.radius/2));
+                    }
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = star.color;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                });
+            },
+
+            drawPlayer() {
+                const p = this.player;
+                const cx = p.x + p.width / 2;
+                const cy = p.y + p.height / 2;
+
+                this.ctx.shadowColor = p.color;
+                // Aumenta glow se tiver poder de estrela
+                this.ctx.shadowBlur = this.state.isInvincible ? 30 : 15;
+                
+                if(this.state.isInvincible) {
+                    // Aura do poder
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    this.ctx.beginPath();
+                    this.ctx.arc(cx, cy, p.width, 0, Math.PI*2);
+                    this.ctx.fill();
+                }
+
+                this.ctx.fillStyle = this.state.isInvincible ? '#fff' : p.color;
+
+                switch(p.type) {
+                    case 'square':
+                        this.ctx.fillRect(p.x, p.y, p.width, p.height);
+                        break;
+                    case 'triangle':
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(cx, p.y);
+                        this.ctx.lineTo(p.x + p.width, p.y + p.height);
+                        this.ctx.lineTo(p.x, p.y + p.height);
+                        this.ctx.fill();
+                        break;
+                    case 'hexagon':
+                        this.ctx.beginPath();
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (Math.PI / 3) * i;
+                            const hx = cx + (p.width/2) * Math.cos(angle);
+                            const hy = cy + (p.height/2) * Math.sin(angle);
+                            if (i === 0) this.ctx.moveTo(hx, hy);
+                            else this.ctx.lineTo(hx, hy);
+                        }
+                        this.ctx.closePath();
+                        this.ctx.fill();
+                        break;
+                    case 'glitch':
+                        // Efeito glitch deslocado
+                        this.ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                        this.ctx.fillRect(p.x - 3, p.y, p.width, p.height);
+                        this.ctx.fillStyle = 'rgba(0, 255, 255, 0.7)';
+                        this.ctx.fillRect(p.x + 3, p.y, p.width, p.height);
+                        this.ctx.fillStyle = '#fff';
+                        this.ctx.fillRect(p.x, p.y, p.width, p.height);
+                        break;
+                    case 'orbital':
+                        // Circulo central
+                        this.ctx.beginPath();
+                        this.ctx.arc(cx, cy, p.width/2 - 2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        // Orbita
+                        const orbitAngle = this.config.frameCount * 0.2;
+                        const ox = cx + Math.cos(orbitAngle) * (p.width/2 + 5);
+                        const oy = cy + Math.sin(orbitAngle) * (p.width/2 + 5);
+                        this.ctx.fillStyle = '#fff';
+                        this.ctx.beginPath();
+                        this.ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        break;
+                    default:
+                        this.ctx.fillRect(p.x, p.y, p.width, p.height);
+                }
+
+                this.ctx.shadowBlur = 0; // Reset
+            }
+        };
+
+        // Inicia a UI quando o DOM carregar
+        window.onload = () => {
+            UIController.init();
+            GameEngine.init(); 
+        };
+    </script>
+</body>
+</html>
